@@ -420,7 +420,7 @@ export default function Layout({ children }) {
         <div className="footer-bottom">
 
           <span>
-            © {new Date().getFullYear()} Shri Vriddi Films
+            © {new Date().getFullYear()} Shri Riddhi Prop's Studio
           </span>
 
           <span>
