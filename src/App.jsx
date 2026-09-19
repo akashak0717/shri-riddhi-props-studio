@@ -732,6 +732,173 @@ function EventPage() {
     loading
   } = useEvent(slug)
 
+  /*
+    Gallery order:
+    - Horizontal media is always shown first.
+    - Vertical media starts in a completely separate section.
+    - Therefore a vertical image can never sit beside the last
+      horizontal image when the horizontal count is odd.
+  */
+
+  const [mediaOrientation, setMediaOrientation] =
+    React.useState({})
+
+  const [orientationReady, setOrientationReady] =
+    React.useState(false)
+
+
+  React.useEffect(() => {
+
+    let cancelled = false
+
+    async function detectOrientations() {
+
+      if (!media || media.length === 0) {
+        setMediaOrientation({})
+        setOrientationReady(true)
+        return
+      }
+
+      setOrientationReady(false)
+
+      const detected = {}
+
+      await Promise.all(
+        media.map(
+          (item) =>
+            new Promise((resolve) => {
+
+              if (item.type === "video") {
+
+                const video =
+                  document.createElement("video")
+
+                video.preload = "metadata"
+
+                video.onloadedmetadata = () => {
+
+                  detected[item.id] =
+                    video.videoWidth >= video.videoHeight
+                      ? "horizontal"
+                      : "vertical"
+
+                  resolve()
+
+                }
+
+                video.onerror = () => {
+                  detected[item.id] = "horizontal"
+                  resolve()
+                }
+
+                video.src = item.file_url
+
+                return
+              }
+
+              const image = new Image()
+
+              image.onload = () => {
+
+                detected[item.id] =
+                  image.naturalWidth >= image.naturalHeight
+                    ? "horizontal"
+                    : "vertical"
+
+                resolve()
+
+              }
+
+              image.onerror = () => {
+                detected[item.id] = "horizontal"
+                resolve()
+              }
+
+              image.src = item.file_url
+
+            })
+        )
+      )
+
+      if (cancelled) return
+
+      setMediaOrientation(detected)
+      setOrientationReady(true)
+
+    }
+
+    detectOrientations()
+
+    return () => {
+      cancelled = true
+    }
+
+  }, [media])
+
+
+  const horizontalMedia =
+    media.filter(
+      (item) =>
+        mediaOrientation[item.id] !== "vertical"
+    )
+
+  const verticalMedia =
+    media.filter(
+      (item) =>
+        mediaOrientation[item.id] === "vertical"
+    )
+
+
+  function renderGalleryItem(item) {
+
+    return (
+
+      <motion.div
+        key={item.id}
+        className="gallery-item"
+        initial={{
+          opacity: 0,
+          y: 12
+        }}
+        whileInView={{
+          opacity: 1,
+          y: 0
+        }}
+        viewport={{
+          once: true
+        }}
+        transition={{
+          duration: 0.35
+        }}
+      >
+
+        {item.type === "video" ? (
+
+          <video
+            src={item.file_url}
+            controls
+            playsInline
+          />
+
+        ) : (
+
+          <img
+            src={item.file_url}
+            alt={
+              item.alt_text ||
+              event?.title ||
+              "Shri Vriddi Films"
+            }
+          />
+
+        )}
+
+      </motion.div>
+
+    )
+
+  }
+
 
   if (loading) {
 
@@ -807,60 +974,38 @@ function EventPage() {
       </section>
 
 
-      <section className="gallery-grid">
+      {media.length > 0 ? (
 
-        {media.map((item, index) => (
+        <section className="gallery-groups">
 
-          <motion.div
-            key={item.id}
-            className={
-              `gallery-item ${
-                index % 7 === 0
-                  ? "gallery-wide"
-                  : ""
-              }`
-            }
+          {orientationReady &&
+            horizontalMedia.length > 0 && (
 
-            initial={{
-              opacity: 0
-            }}
+              <div className="gallery-grid gallery-horizontal-grid">
 
-            whileInView={{
-              opacity: 1
-            }}
+                {horizontalMedia.map(renderGalleryItem)}
 
-            viewport={{
-              once: true
-            }}
-          >
-
-            {item.type === "video" ? (
-
-              <video
-                src={item.file_url}
-                controls
-                playsInline
-              />
-
-            ) : (
-
-              <img
-                src={item.file_url}
-                alt={
-                  item.alt_text ||
-                  event?.title ||
-                  "Shri Vriddi Films"
-                }
-              />
+              </div>
 
             )}
 
-          </motion.div>
 
-        ))}
+          {orientationReady &&
+            verticalMedia.length > 0 && (
 
+              <div className="gallery-grid gallery-vertical-grid">
 
-        {media.length === 0 && (
+                {verticalMedia.map(renderGalleryItem)}
+
+              </div>
+
+            )}
+
+        </section>
+
+      ) : (
+
+        <section className="gallery-grid">
 
           <div className="empty-work gallery-empty">
 
@@ -877,13 +1022,14 @@ function EventPage() {
 
           </div>
 
-        )}
+        </section>
 
-      </section>
+      )}
 
     </Layout>
   )
 }
+
 
 
 /* =====================================================
