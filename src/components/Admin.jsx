@@ -22,6 +22,18 @@ import {
 
 const MEDIA_BUCKET = "studio-media"
 
+const DEFAULT_SITE_SETTINGS = {
+  id: "main",
+  hero_image: null,
+  hero_image_path: null,
+  about_image_1: null,
+  about_image_1_path: null,
+  about_image_2: null,
+  about_image_2_path: null,
+  about_image_3: null,
+  about_image_3_path: null,
+}
+
 export default function Admin() {
   const [session, setSession] = useState(null)
 
@@ -31,6 +43,7 @@ export default function Admin() {
   const [categories, setCategories] = useState([])
   const [events, setEvents] = useState([])
   const [media, setMedia] = useState([])
+  const [siteSettings, setSiteSettings] = useState(DEFAULT_SITE_SETTINGS)
 
   const [message, setMessage] = useState("")
   const [messageType, setMessageType] = useState("success")
@@ -127,6 +140,7 @@ export default function Admin() {
       setCategories([])
       setEvents([])
       setMedia([])
+      setSiteSettings(DEFAULT_SITE_SETTINGS)
       setMessage("")
     }
 
@@ -187,11 +201,38 @@ export default function Admin() {
     return data || []
   }
 
+  async function loadSiteSettings() {
+    const { data, error } = await supabase
+      .from("site_settings")
+      .select("*")
+      .eq("id", "main")
+      .maybeSingle()
+
+    if (error) {
+      console.error("Site settings error:", error)
+      showError(`Site settings error: ${error.message}`)
+      return DEFAULT_SITE_SETTINGS
+    }
+
+    const next = {
+      ...DEFAULT_SITE_SETTINGS,
+      ...(data || {}),
+    }
+
+    setSiteSettings(next)
+    return next
+  }
+
   async function loadData() {
     if (!session) return
 
     setLoading(true)
-    await Promise.all([loadCategories(), loadEvents(), loadMedia()])
+    await Promise.all([
+      loadCategories(),
+      loadEvents(),
+      loadMedia(),
+      loadSiteSettings(),
+    ])
     setLoading(false)
   }
 
@@ -526,6 +567,133 @@ export default function Admin() {
     return `${Date.now()}-${Math.random().toString(36).slice(2)}`
   }
 
+  function siteSettingLabel(slot) {
+    if (slot === "hero_image") return "Home Hero Image"
+    if (slot === "about_image_1") return "About Image 1"
+    if (slot === "about_image_2") return "About Image 2"
+    return "About Image 3"
+  }
+
+  async function uploadSiteImage(slot, file) {
+    if (!file) return
+
+    if (!file.type.startsWith("image/")) {
+      showError("Please select an image file.")
+      return
+    }
+
+    if (file.size > 100 * 1024 * 1024) {
+      showError("The image must be 100 MB or smaller.")
+      return
+    }
+
+    setUploading(true)
+    setMessage("")
+
+    try {
+      const extension = file.name.includes(".")
+        ? file.name.split(".").pop().toLowerCase()
+        : "jpg"
+
+      const filePath = `site-settings/${slot}-${uniqueId()}.${extension}`
+
+      const { error: uploadError } = await supabase.storage
+        .from(MEDIA_BUCKET)
+        .upload(filePath, file, {
+          cacheControl: "3600",
+          contentType: file.type,
+          upsert: false,
+        })
+
+      if (uploadError) {
+        showError(`Upload failed: ${uploadError.message}`)
+        return
+      }
+
+      const { data: publicData } = supabase.storage
+        .from(MEDIA_BUCKET)
+        .getPublicUrl(filePath)
+
+      const fileUrl = publicData?.publicUrl
+
+      if (!fileUrl) {
+        await supabase.storage.from(MEDIA_BUCKET).remove([filePath])
+        showError("Could not create the public image URL.")
+        return
+      }
+
+      const oldPath = siteSettings?.[`${slot}_path`]
+
+      const { error: saveError } = await supabase
+        .from("site_settings")
+        .upsert(
+          {
+            id: "main",
+            [slot]: fileUrl,
+            [`${slot}_path`]: filePath,
+            updated_at: new Date().toISOString(),
+          },
+          { onConflict: "id" }
+        )
+
+      if (saveError) {
+        await supabase.storage.from(MEDIA_BUCKET).remove([filePath])
+        showError(`Could not save ${siteSettingLabel(slot)}: ${saveError.message}`)
+        return
+      }
+
+      if (oldPath && oldPath !== filePath) {
+        await supabase.storage.from(MEDIA_BUCKET).remove([oldPath])
+      }
+
+      await loadSiteSettings()
+      showSuccess(`${siteSettingLabel(slot)} updated successfully.`)
+    } catch (error) {
+      console.error("Site image upload error:", error)
+      showError(error.message || "Could not upload the image.")
+    } finally {
+      setUploading(false)
+    }
+  }
+
+  async function removeSiteImage(slot) {
+    const currentPath = siteSettings?.[`${slot}_path`]
+
+    setUploading(true)
+    setMessage("")
+
+    try {
+      const { error } = await supabase
+        .from("site_settings")
+        .upsert(
+          {
+            id: "main",
+            [slot]: null,
+            [`${slot}_path`]: null,
+            updated_at: new Date().toISOString(),
+          },
+          { onConflict: "id" }
+        )
+
+      if (error) {
+        showError(`Could not remove ${siteSettingLabel(slot)}: ${error.message}`)
+        return
+      }
+
+      if (currentPath) {
+        await supabase.storage.from(MEDIA_BUCKET).remove([currentPath])
+      }
+
+      await loadSiteSettings()
+      showSuccess(`${siteSettingLabel(slot)} removed.`)
+    } catch (error) {
+      console.error("Site image remove error:", error)
+      showError(error.message || "Could not remove the image.")
+    } finally {
+      setUploading(false)
+    }
+  }
+
   async function uploadMedia() {
     if (!selectedEvent) {
       showError("Please select an event.")
@@ -827,6 +995,90 @@ export default function Admin() {
           <div><span>VIDEOS</span><strong>{videoCount}</strong></div>
         </div>
       </div>
+
+      <section className="admin-card site-settings-card">
+        <div className="admin-section-head">
+          <div>
+            <span className="eyebrow">WEBSITE</span>
+            <h2>Home & About Images</h2>
+            <p className="site-settings-description">
+              Upload the images shown on the Home hero and About page. Changes appear on the website automatically.
+            </p>
+          </div>
+        </div>
+
+        <div className="site-settings-grid">
+          {[
+            { slot: "hero_image", title: "Home Hero", hint: "Main hero photograph" },
+            { slot: "about_image_1", title: "About Image 1", hint: "Authentic Emotion" },
+            { slot: "about_image_2", title: "About Image 2", hint: "Colour & Light" },
+            { slot: "about_image_3", title: "About Image 3", hint: "Your Story" },
+          ].map((item) => {
+            const imageUrl = siteSettings?.[item.slot]
+
+            return (
+              <div className="site-setting-item" key={item.slot}>
+                <div className="site-setting-preview">
+                  {imageUrl ? (
+                    <div
+                      className="site-setting-preview-image"
+                      style={{ backgroundImage: `url("${imageUrl}")` }}
+                    />
+                  ) : (
+                    <div className="site-setting-empty">
+                      <Image size={24} />
+                      <span>No image</span>
+                    </div>
+                  )}
+                </div>
+
+                <div className="site-setting-copy">
+                  <strong>{item.title}</strong>
+                  <small>{item.hint}</small>
+                </div>
+
+                <input
+                  id={`site-upload-${item.slot}`}
+                  type="file"
+                  accept="image/*"
+                  className="site-upload-input"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0]
+                    if (file) uploadSiteImage(item.slot, file)
+                    e.target.value = ""
+                  }}
+                />
+
+                <div className="site-setting-actions">
+                  <button
+                    type="button"
+                    className="small-btn"
+                    onClick={() =>
+                      document.getElementById(`site-upload-${item.slot}`)?.click()
+                    }
+                    disabled={uploading || loading}
+                  >
+                    <Upload size={15} />
+                    {imageUrl ? "Replace" : "Upload"}
+                  </button>
+
+                  {imageUrl && (
+                    <button
+                      type="button"
+                      className="delete-btn"
+                      onClick={() => removeSiteImage(item.slot)}
+                      disabled={uploading || loading}
+                      title="Remove image"
+                    >
+                      <Trash2 size={15} />
+                    </button>
+                  )}
+                </div>
+              </div>
+            )
+          })}
+        </div>
+      </section>
 
       <div className="admin-grid">
         <section className="admin-card">
