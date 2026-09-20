@@ -723,8 +723,7 @@ function CategoryPage() {
 
 function EventPage() {
 
-  const { slug } =
-    useParams()
+  const { slug } = useParams()
 
   const {
     event,
@@ -735,9 +734,8 @@ function EventPage() {
   /*
     Gallery order:
     - Horizontal media is always shown first.
-    - Vertical media starts in a completely separate section.
-    - Therefore a vertical image can never sit beside the last
-      horizontal image when the horizontal count is odd.
+    - Vertical media starts in a separate section.
+    - Clicking any media opens the full-screen gallery viewer.
   */
 
   const [mediaOrientation, setMediaOrientation] =
@@ -745,6 +743,9 @@ function EventPage() {
 
   const [orientationReady, setOrientationReady] =
     React.useState(false)
+
+  const [selectedMediaIndex, setSelectedMediaIndex] =
+    React.useState(null)
 
 
   React.useEffect(() => {
@@ -783,7 +784,6 @@ function EventPage() {
                       : "vertical"
 
                   resolve()
-
                 }
 
                 video.onerror = () => {
@@ -806,7 +806,6 @@ function EventPage() {
                     : "vertical"
 
                 resolve()
-
               }
 
               image.onerror = () => {
@@ -815,7 +814,6 @@ function EventPage() {
               }
 
               image.src = item.file_url
-
             })
         )
       )
@@ -824,7 +822,6 @@ function EventPage() {
 
       setMediaOrientation(detected)
       setOrientationReady(true)
-
     }
 
     detectOrientations()
@@ -849,6 +846,63 @@ function EventPage() {
     )
 
 
+  function openViewer(item) {
+    const index = media.findIndex(
+      (mediaItem) => mediaItem.id === item.id
+    )
+
+    if (index !== -1) {
+      setSelectedMediaIndex(index)
+    }
+  }
+
+
+  function closeViewer() {
+    setSelectedMediaIndex(null)
+  }
+
+
+  function showPrevious() {
+    if (selectedMediaIndex === null || media.length === 0) return
+
+    setSelectedMediaIndex(
+      (selectedMediaIndex - 1 + media.length) % media.length
+    )
+  }
+
+
+  function showNext() {
+    if (selectedMediaIndex === null || media.length === 0) return
+
+    setSelectedMediaIndex(
+      (selectedMediaIndex + 1) % media.length
+    )
+  }
+
+
+  React.useEffect(() => {
+
+    if (selectedMediaIndex === null) return
+
+    function handleKeyDown(event) {
+      if (event.key === "Escape") closeViewer()
+      if (event.key === "ArrowLeft") showPrevious()
+      if (event.key === "ArrowRight") showNext()
+    }
+
+    document.addEventListener("keydown", handleKeyDown)
+
+    const previousOverflow = document.body.style.overflow
+    document.body.style.overflow = "hidden"
+
+    return () => {
+      document.removeEventListener("keydown", handleKeyDown)
+      document.body.style.overflow = previousOverflow
+    }
+
+  }, [selectedMediaIndex, media.length])
+
+
   function renderGalleryItem(item) {
 
     return (
@@ -870,14 +924,28 @@ function EventPage() {
         transition={{
           duration: 0.35
         }}
+        role="button"
+        tabIndex={0}
+        onClick={() => openViewer(item)}
+        onKeyDown={(event) => {
+          if (event.key === "Enter" || event.key === " ") {
+            event.preventDefault()
+            openViewer(item)
+          }
+        }}
+        onContextMenu={(event) => event.preventDefault()}
+        aria-label="Open image in gallery viewer"
       >
 
         {item.type === "video" ? (
 
           <video
             src={item.file_url}
-            controls
             playsInline
+            muted
+            preload="metadata"
+            draggable="false"
+            onContextMenu={(event) => event.preventDefault()}
           />
 
         ) : (
@@ -887,16 +955,16 @@ function EventPage() {
             alt={
               item.alt_text ||
               event?.title ||
-              "Shri Vriddi Films"
+              "Shri Riddhi Props Studio"
             }
+            draggable="false"
+            onContextMenu={(event) => event.preventDefault()}
           />
 
         )}
 
       </motion.div>
-
     )
-
   }
 
 
@@ -906,15 +974,18 @@ function EventPage() {
       <Layout>
 
         <div className="loading-page">
-
           Loading gallery…
-
         </div>
 
       </Layout>
     )
-
   }
+
+
+  const selectedMedia =
+    selectedMediaIndex !== null
+      ? media[selectedMediaIndex]
+      : null
 
 
   return (
@@ -925,50 +996,37 @@ function EventPage() {
         <div>
 
           <span className="eyebrow">
-
             {event?.categories?.name ||
               "EVENT GALLERY"}
-
           </span>
 
-
           <h1>
-
             {event?.title ||
               "Gallery not found"}
-
             <br />
-
             <em>
               in frames.
             </em>
-
           </h1>
 
-
           <p>
-
             {event?.description ||
-              "A collection by Shri Vriddi Films."}
-
+              "A collection by Shri Riddhi Props Studio."}
           </p>
 
         </div>
 
-
         {event?.cover_image ? (
-
           <img
             src={event.cover_image}
             alt={event.title}
+            draggable="false"
+            onContextMenu={(event) => event.preventDefault()}
           />
-
         ) : (
-
           <MediaPlaceholder
             label="Event cover"
           />
-
         )}
 
       </section>
@@ -982,23 +1040,16 @@ function EventPage() {
             horizontalMedia.length > 0 && (
 
               <div className="gallery-grid gallery-horizontal-grid">
-
                 {horizontalMedia.map(renderGalleryItem)}
-
               </div>
-
             )}
-
 
           {orientationReady &&
             verticalMedia.length > 0 && (
 
               <div className="gallery-grid gallery-vertical-grid">
-
                 {verticalMedia.map(renderGalleryItem)}
-
               </div>
-
             )}
 
         </section>
@@ -1014,22 +1065,102 @@ function EventPage() {
             />
 
             <p>
-
               Upload media for this event
               from the admin dashboard.
-
             </p>
 
           </div>
 
         </section>
+      )}
 
+
+      {selectedMedia && (
+
+        <div
+          className="gallery-lightbox"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Photo gallery viewer"
+          onClick={closeViewer}
+          onContextMenu={(event) => event.preventDefault()}
+        >
+
+          <button
+            type="button"
+            className="gallery-lightbox-close"
+            onClick={closeViewer}
+            aria-label="Close gallery"
+          >
+            ×
+          </button>
+
+          <button
+            type="button"
+            className="gallery-lightbox-prev"
+            onClick={(event) => {
+              event.stopPropagation()
+              showPrevious()
+            }}
+            aria-label="Previous image"
+          >
+            ‹
+          </button>
+
+          <div
+            className="gallery-lightbox-content"
+            onClick={(event) => event.stopPropagation()}
+          >
+
+            {selectedMedia.type === "video" ? (
+              <video
+                src={selectedMedia.file_url}
+                autoPlay
+                muted
+                playsInline
+                controls={false}
+                controlsList="nodownload noplaybackrate"
+                disablePictureInPicture
+                draggable="false"
+                onContextMenu={(event) => event.preventDefault()}
+              />
+            ) : (
+              <img
+                src={selectedMedia.file_url}
+                alt={
+                  selectedMedia.alt_text ||
+                  event?.title ||
+                  "Shri Riddhi Props Studio"
+                }
+                draggable="false"
+                onContextMenu={(event) => event.preventDefault()}
+              />
+            )}
+
+          </div>
+
+          <button
+            type="button"
+            className="gallery-lightbox-next"
+            onClick={(event) => {
+              event.stopPropagation()
+              showNext()
+            }}
+            aria-label="Next image"
+          >
+            ›
+          </button>
+
+          <div className="gallery-lightbox-count">
+            {selectedMediaIndex + 1} / {media.length}
+          </div>
+
+        </div>
       )}
 
     </Layout>
   )
 }
-
 
 
 /* =====================================================
