@@ -910,6 +910,7 @@ function EventPage() {
       <motion.div
         key={item.id}
         className="gallery-item"
+        style={{ WebkitTouchCallout: "none" }}
         initial={{
           opacity: 0,
           y: 12
@@ -950,14 +951,15 @@ function EventPage() {
 
         ) : (
 
-          <img
-            src={item.file_url}
-            alt={
+          <div
+            className="protected-gallery-image"
+            role="img"
+            aria-label={
               item.alt_text ||
               event?.title ||
               "Shri Riddhi Props Studio"
             }
-            draggable="false"
+            style={{ backgroundImage: `url("${item.file_url}")` }}
             onContextMenu={(event) => event.preventDefault()}
           />
 
@@ -1079,6 +1081,7 @@ function EventPage() {
 
         <div
           className="gallery-lightbox"
+          style={{ WebkitTouchCallout: "none" }}
           role="dialog"
           aria-modal="true"
           aria-label="Photo gallery viewer"
@@ -1125,14 +1128,15 @@ function EventPage() {
                 onContextMenu={(event) => event.preventDefault()}
               />
             ) : (
-              <img
-                src={selectedMedia.file_url}
-                alt={
+              <div
+                className="protected-lightbox-image"
+                role="img"
+                aria-label={
                   selectedMedia.alt_text ||
                   event?.title ||
                   "Shri Riddhi Props Studio"
                 }
-                draggable="false"
+                style={{ backgroundImage: `url("${selectedMedia.file_url}")` }}
                 onContextMenu={(event) => event.preventDefault()}
               />
             )}
