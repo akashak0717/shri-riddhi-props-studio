@@ -1,5 +1,4 @@
 import React from "react"
-import { supabase } from "./lib/supabase"
 
 import {
   Routes,
@@ -114,32 +113,6 @@ function Button({ to, children }) {
 function Home() {
   const { data: categories } = useCategories()
   const { data: events } = useEvents(6)
-
-  const [siteSettings, setSiteSettings] = React.useState(null)
-
-  React.useEffect(() => {
-    let cancelled = false
-
-    async function loadSiteSettings() {
-      if (!supabase) return
-
-      const { data, error } = await supabase
-        .from("site_settings")
-        .select("*")
-        .eq("id", "main")
-        .maybeSingle()
-
-      if (!cancelled && !error) {
-        setSiteSettings(data || null)
-      }
-    }
-
-    loadSiteSettings()
-
-    return () => {
-      cancelled = true
-    }
-  }, [])
 
   const cats =
     categories.length > 0
@@ -293,18 +266,9 @@ function Home() {
 
           <div className="hero-photo">
 
-            {siteSettings?.hero_image ? (
-              <div
-                className="managed-home-image hero-managed-image"
-                role="img"
-                aria-label="Shri Riddhi Props Studio hero photograph"
-                style={{ backgroundImage: `url("${siteSettings.hero_image}")` }}
-              />
-            ) : (
-              <MediaPlaceholder
-                label="Your hero photograph"
-              />
-            )}
+            <MediaPlaceholder
+              label="Your hero photograph"
+            />
 
           </div>
 
@@ -700,7 +664,7 @@ function CategoryPage() {
         <p>
 
           {category?.description ||
-            "A collection of photographs and films from Shri Riddhi Props Studio."}
+            "A collection of photographs and films from Shri Vriddi Films."}
 
         </p>
 
@@ -1055,10 +1019,13 @@ function EventPage() {
         </div>
 
         {event?.cover_image ? (
-          <img
-            src={event.cover_image}
-            alt={event.title}
-            draggable="false"
+          <div
+            className="event-cover-protected"
+            role="img"
+            aria-label={event.title || "Event cover"}
+            style={{
+              backgroundImage: `url("${event.cover_image}")`
+            }}
             onContextMenu={(event) => event.preventDefault()}
           />
         ) : (
@@ -1208,31 +1175,6 @@ function EventPage() {
 ===================================================== */
 
 function About() {
-  const [siteSettings, setSiteSettings] = React.useState(null)
-
-  React.useEffect(() => {
-    let cancelled = false
-
-    async function loadSiteSettings() {
-      if (!supabase) return
-
-      const { data, error } = await supabase
-        .from("site_settings")
-        .select("*")
-        .eq("id", "main")
-        .maybeSingle()
-
-      if (!cancelled && !error) {
-        setSiteSettings(data || null)
-      }
-    }
-
-    loadSiteSettings()
-
-    return () => {
-      cancelled = true
-    }
-  }, [])
 
   return (
     <Layout>
@@ -1272,54 +1214,39 @@ function About() {
 
         <div className="about-art">
 
-          <div
-            className={`about-card card-a ${siteSettings?.about_image_1 ? "about-card-with-image" : ""}`}
-            style={
-              siteSettings?.about_image_1
-                ? { backgroundImage: `url("${siteSettings.about_image_1}")` }
-                : undefined
-            }
-          >
-            {siteSettings?.about_image_1 && <span className="about-card-image-overlay" />}
-            <span className="about-card-content">
-              AUTHENTIC
-              <br />
-              <strong>EMOTION</strong>
-            </span>
+          <div className="about-card card-a">
+
+            AUTHENTIC
+            <br />
+
+            <strong>
+              EMOTION
+            </strong>
+
           </div>
 
 
-          <div
-            className={`about-card card-b ${siteSettings?.about_image_2 ? "about-card-with-image" : ""}`}
-            style={
-              siteSettings?.about_image_2
-                ? { backgroundImage: `url("${siteSettings.about_image_2}")` }
-                : undefined
-            }
-          >
-            {siteSettings?.about_image_2 && <span className="about-card-image-overlay" />}
-            <span className="about-card-content">
-              COLOUR
-              <br />
-              <strong>& LIGHT</strong>
-            </span>
+          <div className="about-card card-b">
+
+            COLOUR
+            <br />
+
+            <strong>
+              & LIGHT
+            </strong>
+
           </div>
 
 
-          <div
-            className={`about-card card-c ${siteSettings?.about_image_3 ? "about-card-with-image" : ""}`}
-            style={
-              siteSettings?.about_image_3
-                ? { backgroundImage: `url("${siteSettings.about_image_3}")` }
-                : undefined
-            }
-          >
-            {siteSettings?.about_image_3 && <span className="about-card-image-overlay" />}
-            <span className="about-card-content">
-              YOUR
-              <br />
-              <strong>STORY</strong>
-            </span>
+          <div className="about-card card-c">
+
+            YOUR
+            <br />
+
+            <strong>
+              STORY
+            </strong>
+
           </div>
 
         </div>
