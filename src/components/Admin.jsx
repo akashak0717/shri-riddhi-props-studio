@@ -34,6 +34,36 @@ const DEFAULT_SITE_SETTINGS = {
   about_image_3_path: null,
 }
 
+function isJwtFutureError(error) {
+  const message = error?.message?.toLowerCase?.() || ""
+  return (
+    error?.code === "PGRST303" ||
+    message.includes("jwt issued at future")
+  )
+}
+
+async function wait(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms))
+}
+
+async function retryJwtOperation(operation, retries = 3) {
+  let result
+
+  for (let attempt = 0; attempt <= retries; attempt += 1) {
+    result = await operation()
+
+    if (!result?.error || !isJwtFutureError(result.error)) {
+      return result
+    }
+
+    if (attempt < retries) {
+      await wait(800 * (attempt + 1))
+    }
+  }
+
+  return result
+}
+
 export default function Admin() {
   const [session, setSession] = useState(null)
 
@@ -148,11 +178,13 @@ export default function Admin() {
   }
 
   async function loadCategories() {
-    const { data, error } = await supabase
-      .from("categories")
-      .select("*")
-      .order("display_order", { ascending: true })
-      .order("created_at", { ascending: true })
+    const { data, error } = await retryJwtOperation(() =>
+      supabase
+        .from("categories")
+        .select("*")
+        .order("display_order", { ascending: true })
+        .order("created_at", { ascending: true })
+    )
 
     if (error) {
       console.error("Categories error:", error)
@@ -165,15 +197,17 @@ export default function Admin() {
   }
 
   async function loadEvents() {
-    const { data, error } = await supabase
-      .from("events")
-      .select(`
-        *,
-        categories (
-          name
-        )
-      `)
-      .order("created_at", { ascending: false })
+    const { data, error } = await retryJwtOperation(() =>
+      supabase
+        .from("events")
+        .select(`
+          *,
+          categories (
+            name
+          )
+        `)
+        .order("created_at", { ascending: false })
+    )
 
     if (error) {
       console.error("Events error:", error)
@@ -186,10 +220,12 @@ export default function Admin() {
   }
 
   async function loadMedia() {
-    const { data, error } = await supabase
-      .from("media")
-      .select("*")
-      .order("created_at", { ascending: false })
+    const { data, error } = await retryJwtOperation(() =>
+      supabase
+        .from("media")
+        .select("*")
+        .order("created_at", { ascending: false })
+    )
 
     if (error) {
       console.error("Media error:", error)
@@ -202,11 +238,13 @@ export default function Admin() {
   }
 
   async function loadSiteSettings() {
-    const { data, error } = await supabase
-      .from("site_settings")
-      .select("*")
-      .eq("id", "main")
-      .maybeSingle()
+    const { data, error } = await retryJwtOperation(() =>
+      supabase
+        .from("site_settings")
+        .select("*")
+        .eq("id", "main")
+        .maybeSingle()
+    )
 
     if (error) {
       console.error("Site settings error:", error)
@@ -597,13 +635,15 @@ export default function Admin() {
 
       const filePath = `site-settings/${slot}-${uniqueId()}.${extension}`
 
-      const { error: uploadError } = await supabase.storage
-        .from(MEDIA_BUCKET)
-        .upload(filePath, file, {
-          cacheControl: "3600",
-          contentType: file.type,
-          upsert: false,
-        })
+      const { error: uploadError } = await retryJwtOperation(() =>
+        supabase.storage
+          .from(MEDIA_BUCKET)
+          .upload(filePath, file, {
+            cacheControl: "3600",
+            contentType: file.type,
+            upsert: false,
+          })
+      )
 
       if (uploadError) {
         showError(`Upload failed: ${uploadError.message}`)
@@ -624,17 +664,19 @@ export default function Admin() {
 
       const oldPath = siteSettings?.[`${slot}_path`]
 
-      const { error: saveError } = await supabase
-        .from("site_settings")
-        .upsert(
-          {
-            id: "main",
-            [slot]: fileUrl,
-            [`${slot}_path`]: filePath,
-            updated_at: new Date().toISOString(),
-          },
-          { onConflict: "id" }
-        )
+      const { error: saveError } = await retryJwtOperation(() =>
+        supabase
+          .from("site_settings")
+          .upsert(
+            {
+              id: "main",
+              [slot]: fileUrl,
+              [`${slot}_path`]: filePath,
+              updated_at: new Date().toISOString(),
+            },
+            { onConflict: "id" }
+          )
+      )
 
       if (saveError) {
         await supabase.storage.from(MEDIA_BUCKET).remove([filePath])
@@ -715,13 +757,15 @@ export default function Admin() {
       const type = file.type.startsWith("video/") ? "video" : "image"
       const filePath = `${selectedEvent.slug}/${uniqueId()}-${safeFileName(file.name)}`
 
-      const { error: uploadError } = await supabase.storage
-        .from(MEDIA_BUCKET)
-        .upload(filePath, file, {
-          cacheControl: "3600",
-          contentType: file.type,
-          upsert: false,
-        })
+      const { error: uploadError } = await retryJwtOperation(() =>
+        supabase.storage
+          .from(MEDIA_BUCKET)
+          .upload(filePath, file, {
+            cacheControl: "3600",
+            contentType: file.type,
+            upsert: false,
+          })
+      )
 
       if (uploadError) {
         console.error("Upload error:", uploadError)
@@ -741,19 +785,21 @@ export default function Admin() {
         continue
       }
 
-      const { data: insertedMedia, error: mediaError } = await supabase
-        .from("media")
-        .insert({
-          event_id: selectedEvent.id,
-          type,
-          file_url: fileUrl,
-          file_path: filePath,
-          alt_text: `${selectedEvent.title} ${type}`,
-          display_order: media.filter((item) => item.event_id === selectedEvent.id)
-            .length + uploadedRows.length,
-        })
-        .select()
-        .single()
+      const { data: insertedMedia, error: mediaError } = await retryJwtOperation(() =>
+        supabase
+          .from("media")
+          .insert({
+            event_id: selectedEvent.id,
+            type,
+            file_url: fileUrl,
+            file_path: filePath,
+            alt_text: `${selectedEvent.title} ${type}`,
+            display_order: media.filter((item) => item.event_id === selectedEvent.id)
+              .length + uploadedRows.length,
+          })
+          .select()
+          .single()
+      )
 
       if (mediaError) {
         console.error("Media record error:", mediaError)
